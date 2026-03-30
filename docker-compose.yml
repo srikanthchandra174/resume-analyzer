@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database with PGVector Extension
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: resume-analyzer-postgres
+    environment:
+      POSTGRES_DB: resume_analyzer
+      POSTGRES_USER: resumeuser
+      POSTGRES_PASSWORD: resumepassword
+      POSTGRES_INITDB_ARGS: "-c shared_preload_libraries=vector"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U resumeuser -d resume_analyzer" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - resume-analyzer-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: resume-analyzer-redis
+    command: redis-server --appendonly yes --requirepass ""
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - resume-analyzer-network
+    restart: unless-stopped
+
+  # Redis Commander (optional - for Redis management UI)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: resume-analyzer-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - resume-analyzer-network
+    restart: unless-stopped
+
+  # pgAdmin (optional - for PostgreSQL management UI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: resume-analyzer-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@resumeanalyzer.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - resume-analyzer-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+
+networks:
+  resume-analyzer-network:
+    driver: bridge
+
