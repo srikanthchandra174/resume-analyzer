@@ -56,7 +56,39 @@ A completed analysis stores (and returns) a structure equivalent to:
   ]
 }
 ```
-> Exact endpoint paths and request/response DTOs live in `src/` — wire this shape to your controller's actual routes.
+
+## API Endpoints
+
+| Method | Path | Description | Content-Type |
+|--------|------|-------------|--------------|
+| **POST** | `/api/v1/resume-analysis/analyze` | Analyze resume against job description | `multipart/form-data` |
+| **GET** | `/api/v1/resume-analysis/{id}` | Retrieve a specific analysis by ID | `application/json` |
+| **GET** | `/api/v1/resume-analysis/history` | Paginated analysis history | `application/json` |
+| **GET** | `/api/v1/resume-analysis/recent` | Recent analyses (last N hours) | `application/json` |
+| **GET** | `/api/v1/resume-analysis/health` | API health check | `text/plain` |
+
+**POST `/analyze` Request:**
+```bash
+curl -X POST http://localhost:8080/api/v1/resume-analysis/analyze \
+  -F "resumeFile=@resume.pdf" \
+  -F "jobDescription=Senior Backend Engineer with Java, Spring Boot, PostgreSQL experience..."
+```
+
+**Example Response:**
+```json
+{
+  "id": 1,
+  "fileName": "resume.pdf",
+  "matchScore": 85.0,
+  "summary": "Strong backend fit; gaps in container orchestration.",
+  "missingSkills": ["Kubernetes", "GraphQL"],
+  "suggestedImprovements": ["Quantify impact in experience bullets", "Add a cloud/DevOps section"],
+  "interviewQuestions": ["Walk through a microservice you designed...", "How would you tune a slow PostgreSQL query?"],
+  "createdAt": "2026-03-30T10:30:00Z"
+}
+```
+
+📖 **For detailed endpoint documentation, see [docs/API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md).**
 
 ## Tech Stack
 
@@ -138,13 +170,24 @@ Set via environment variables / `application.properties`:
 
 ```
 resume-analyzer/
-├── src/                  # Application source (controllers, services, config)
-├── Sri_Docs/             # Project documentation / notes
-├── init-db.sql           # pgvector + schema bootstrap (auto-run by Postgres container)
-├── docker-compose.yml    # PostgreSQL (pgvector), Redis, Redis Commander, pgAdmin
-├── Dockerfile            # Application container image
-├── pom.xml               # Maven build & dependencies
-└── mvnw / mvnw.cmd       # Maven wrapper
+├── src/
+│   ├── main/                 # Application source (controllers, services, config)
+│   └── test/                 # Unit and integration tests
+├── docs/                     # Project documentation
+├── init-db.sql               # pgvector + schema bootstrap (auto-run by Postgres container)
+├── docker-compose.yml        # PostgreSQL (pgvector), Redis, Redis Commander, pgAdmin
+├── Dockerfile                # Application container image
+├── pom.xml                   # Maven build & dependencies
+└── mvnw / mvnw.cmd           # Maven wrapper
+```
+
+## Running Tests
+
+Run the test suite with Maven:
+
+```bash
+./mvnw test                    # Linux / macOS
+mvnw.cmd test                  # Windows
 ```
 
 ## Engineering Highlights
