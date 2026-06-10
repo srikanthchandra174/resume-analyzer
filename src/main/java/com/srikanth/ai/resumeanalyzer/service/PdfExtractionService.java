@@ -2,6 +2,7 @@ package com.srikanth.ai.resumeanalyzer.service;
 
 import com.srikanth.ai.resumeanalyzer.exception.PdfExtractionException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,7 @@ public class PdfExtractionService {
         try {
             log.info("Starting PDF text extraction for file: {}", file.getOriginalFilename());
 
-            try (PDDocument document = PDDocument.load(file.getInputStream())) {
+            try (PDDocument document = Loader.loadPDF(file.getBytes())) {
                 if (document.isEncrypted()) {
                     log.warn("PDF is encrypted, attempting to open with empty password");
                     document.setAllSecurityToBeRemoved(true);
