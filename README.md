@@ -1,6 +1,6 @@
 # Resume Analyzer 🤖📄
 
-An **AI-powered resume analysis backend** built with **Spring Boot 4** and **Java 21**. Upload a resume (PDF) and a job description, and the service uses Large Language Models via **Spring AI** (pluggable **Ollama** for local inference or **OpenAI**) to score the match, surface missing skills, suggest improvements, and generate interview questions — backed by **PostgreSQL + pgvector** for semantic search and **Redis** for caching.
+An **AI-powered resume analysis backend** built with **Spring Boot 4** and **Java 21**. Upload a resume (PDF) and a job description, and the service uses Large Language Models via **Spring AI** (**DeepSeek**) to score the match, surface missing skills, suggest improvements, and generate interview questions — backed by **PostgreSQL** for storage and optional **Redis** caching.
 
 > A backend showcase of modern **AI-augmented Java development**: Spring AI, vector databases, and local LLM inference.
 
@@ -18,7 +18,7 @@ Resume Analyzer turns a resume + a target job description into structured, AI-ge
 - 📝 **AI summary & suggested improvements** — a concise fit summary plus actionable resume improvements.
 - ❓ **Interview-question generation** — tailored questions based on the resume and role.
 - 🔎 **Semantic search (RAG-ready)** — stores **1536-dimension embeddings** in **pgvector** with an IVFFlat cosine index for similarity search; GIN full-text indexes on resume and job-description text.
-- 🔁 **Swappable LLM backend** — **Ollama** (local/private) or **OpenAI** via Spring AI, switchable through config.
+- 🔁 **Pluggable LLM backend** — DeepSeek via Spring AI; other providers can be swapped in by changing the model starter and config.
 - ⚡ **Redis caching** to reduce latency and repeat LLM calls.
 - 🧾 **Audit logging** of match-score changes; automatic `updated_at` triggers.
 - 🐳 **Dockerised infrastructure** via Docker Compose.
@@ -29,7 +29,7 @@ Resume Analyzer turns a resume + a target job description into structured, AI-ge
 flowchart TD
   C["Client"] -->|"POST: resume PDF + job description"| API["Spring Boot 4 REST API"]
   API -->|extract text| PDF["Apache PDFBox"]
-  API -->|"analyse: score, skills, summary, questions"| AI["Spring AI — Ollama / OpenAI"]
+  API -->|"analyse: score, skills, summary, questions"| AI["Spring AI — DeepSeek"]
   AI -->|"embeddings (1536-d)"| PG[("PostgreSQL + pgvector")]
   API -->|persist analysis & results| PG
   API -->|cache| REDIS[("Redis")]
@@ -96,10 +96,10 @@ curl -X POST http://localhost:8080/api/v1/resume-analysis/analyze \
 |------|------------|
 | Language / Runtime | Java 21 |
 | Framework | Spring Boot 4.0.5 (Spring MVC, Validation, Cache) |
-| AI | Spring AI 2.0.0-M3 — Ollama & OpenAI model starters, vector-store advisors |
+| AI | Spring AI 2.0.0-M3 — DeepSeek model starter |
 | Vector store | PostgreSQL + `pgvector` (1536-d embeddings, IVFFlat cosine index) |
 | Persistence | Spring Data JPA, PostgreSQL |
-| Caching | Redis, Redis OM Spring |
+| Caching | Redis (optional) |
 | PDF parsing | Apache PDFBox 3.0.2 |
 | Build | Maven (wrapper included) |
 | Infra | Docker, Docker Compose |
@@ -122,9 +122,7 @@ The PostgreSQL container auto-runs `init-db.sql` on first start (enables the `ve
 
 - **JDK 21**
 - **Docker & Docker Compose**
-- One LLM backend:
-  - **Ollama** running locally with a pulled model, or
-  - an **OpenAI API key**
+- A **DeepSeek API key**
 
 ## Getting Started
 
@@ -142,18 +140,47 @@ docker compose up -d
 
 The API starts on the configured port (default `8080`). PostgreSQL initialises automatically from `init-db.sql`.
 
+## Run Locally Without Docker (Windows)
+
+Only **JDK 21**, **PostgreSQL** and a **DeepSeek API key** are needed. Redis is optional: caching is off by default.
+
+1. **Install PostgreSQL** (16 or newer). The pgvector extension is *not* required.
+2. **Create the database and user** (in `psql` as the `postgres` superuser):
+   ```sql
+   CREATE USER resumeuser WITH PASSWORD 'resumepassword';
+   CREATE DATABASE resume_analyzer OWNER resumeuser;
+   ```
+3. **(Optional) Create the schema** with indexes, triggers and the audit table. Hibernate creates the core tables automatically if you skip this.
+   ```powershell
+   psql -U resumeuser -d resume_analyzer -f init-db.sql
+   ```
+4. **Set your DeepSeek key** for the current PowerShell session (or use `setx DEEPSEEK_API_KEY "sk-..."` to persist it, then open a new terminal):
+   ```powershell
+   $env:DEEPSEEK_API_KEY = "sk-..."
+   ```
+5. **Run the app:**
+   ```powershell
+   .\mvnw.cmd spring-boot:run
+   ```
+6. **Try it:**
+   ```powershell
+   curl.exe http://localhost:8080/api/v1/resume-analysis/health
+   curl.exe -F "resumeFile=@C:\path\to\resume.pdf" -F "jobDescription=Senior Java developer with Spring Boot and PostgreSQL" http://localhost:8080/api/v1/resume-analysis/analyze
+   ```
+
+Optional environment variables: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `DEEPSEEK_MODEL` (default `deepseek-chat`), `SERVER_PORT`, `CACHE_ENABLED=true` with `REDIS_HOST`/`REDIS_PORT` to turn on Redis caching.
+
 ## Configuration
 
-Set via environment variables / `application.properties`:
+Set via environment variables (defaults in `application.yml`):
 
 | Setting | Purpose |
 |--------|---------|
 | `SPRING_DATASOURCE_URL` / username / password | PostgreSQL connection (local defaults are defined in `docker-compose.yml`) |
 | `SPRING_DATA_REDIS_HOST` / `PORT` | Redis connection |
-| `SPRING_AI_OLLAMA_BASE_URL` + model | Local Ollama backend |
-| `SPRING_AI_OPENAI_API_KEY` + model | OpenAI backend |
+| `DEEPSEEK_API_KEY` + `DEEPSEEK_MODEL` | DeepSeek backend |
 
-> ⚠️ **Never commit your OpenAI API key.** Provide it via an environment variable or untracked local config.
+> ⚠️ **Never commit your DeepSeek API key.** Provide it via an environment variable or untracked local config.
 
 ## Database Schema
 
@@ -193,7 +220,7 @@ mvnw.cmd test                  # Windows
 ## Engineering Highlights
 
 - Built on **Spring Boot 4 / Java 21** with the current Spring ecosystem.
-- **Provider-agnostic AI integration** via Spring AI — switch between local (Ollama) and hosted (OpenAI) models through configuration.
+- **Provider-agnostic AI integration** via Spring AI — the model provider (currently DeepSeek) is isolated behind `ChatClient`.
 - Designed a **normalised analysis schema** (match score, missing skills, improvements, interview questions) with referential integrity, full-text (GIN) indexes, and an audit log.
 - Applied **vector embeddings + pgvector** (IVFFlat cosine) for semantic similarity — a practical **RAG** foundation on a relational database.
 - Used **Redis caching** to cut latency and repeated inference cost.

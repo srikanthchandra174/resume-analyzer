@@ -1,10 +1,5 @@
--- Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- Create schema for resume analyzer
-CREATE SCHEMA IF NOT EXISTS resume_analyzer_schema;
-
--- Create tables with proper constraints and indexes
+-- Schema for resume analyzer (plain PostgreSQL; no extensions required)
+-- Safe to re-run. Hibernate (ddl-auto: update) can also create these tables on its own.
 
 -- Resume Analysis Table
 CREATE TABLE IF NOT EXISTS resume_analysis (
@@ -20,54 +15,39 @@ CREATE TABLE IF NOT EXISTS resume_analysis (
     CONSTRAINT check_match_score CHECK (match_score >= 0 AND match_score <= 100)
 );
 
--- Missing Skills Table
+-- Element-collection tables for ResumeAnalysis (no primary key: the LLM may return duplicates)
 CREATE TABLE IF NOT EXISTS missing_skills (
     analysis_id BIGINT NOT NULL,
-    skill VARCHAR(255) NOT NULL,
-    FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE,
-    PRIMARY KEY (analysis_id, skill)
-);
-
--- Suggested Improvements Table
-CREATE TABLE IF NOT EXISTS suggested_improvements (
-    analysis_id BIGINT NOT NULL,
-    improvement TEXT NOT NULL,
-    FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE,
-    PRIMARY KEY (analysis_id, improvement(255))
-);
-
--- Interview Questions Table
-CREATE TABLE IF NOT EXISTS interview_questions (
-    analysis_id BIGINT NOT NULL,
-    question TEXT NOT NULL,
-    FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE,
-    PRIMARY KEY (analysis_id, question(255))
-);
-
--- Create indexes for better query performance
-CREATE INDEX idx_resume_analysis_created_at ON resume_analysis(created_at DESC);
-CREATE INDEX idx_resume_analysis_match_score ON resume_analysis(match_score);
-CREATE INDEX idx_resume_analysis_file_name ON resume_analysis(file_name);
-CREATE INDEX idx_resume_analysis_embedding_id ON resume_analysis(embedding_id);
-
--- Create index for full-text search capability
-CREATE INDEX idx_resume_text_gin ON resume_analysis USING gin(to_tsvector('english', resume_text));
-CREATE INDEX idx_job_description_gin ON resume_analysis USING gin(to_tsvector('english', job_description));
-
--- Create table for embeddings (for semantic search with pgvector)
-CREATE TABLE IF NOT EXISTS resume_embeddings (
-    id BIGSERIAL PRIMARY KEY,
-    analysis_id BIGINT NOT NULL UNIQUE,
-    embedding vector(1536), -- OpenAI embedding dimension
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    skill VARCHAR(255),
     FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE
 );
 
--- Create index for vector similarity search
-CREATE INDEX idx_embedding_vector ON resume_embeddings USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+CREATE TABLE IF NOT EXISTS suggested_improvements (
+    analysis_id BIGINT NOT NULL,
+    improvement TEXT,
+    FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE
+);
 
--- Create audit table for logging changes
+CREATE TABLE IF NOT EXISTS interview_questions (
+    analysis_id BIGINT NOT NULL,
+    question TEXT,
+    FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE
+);
+
+-- Indexes for query performance
+CREATE INDEX IF NOT EXISTS idx_resume_analysis_created_at ON resume_analysis(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_resume_analysis_match_score ON resume_analysis(match_score);
+CREATE INDEX IF NOT EXISTS idx_resume_analysis_file_name ON resume_analysis(file_name);
+CREATE INDEX IF NOT EXISTS idx_resume_analysis_embedding_id ON resume_analysis(embedding_id);
+CREATE INDEX IF NOT EXISTS idx_missing_skills_analysis_id ON missing_skills(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_suggested_improvements_analysis_id ON suggested_improvements(analysis_id);
+CREATE INDEX IF NOT EXISTS idx_interview_questions_analysis_id ON interview_questions(analysis_id);
+
+-- Full-text search indexes
+CREATE INDEX IF NOT EXISTS idx_resume_text_gin ON resume_analysis USING gin(to_tsvector('english', resume_text));
+CREATE INDEX IF NOT EXISTS idx_job_description_gin ON resume_analysis USING gin(to_tsvector('english', job_description));
+
+-- Audit table for logging changes
 CREATE TABLE IF NOT EXISTS analysis_audit_log (
     id BIGSERIAL PRIMARY KEY,
     analysis_id BIGINT NOT NULL,
@@ -79,7 +59,7 @@ CREATE TABLE IF NOT EXISTS analysis_audit_log (
     FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE
 );
 
--- Create trigger to update updated_at timestamp
+-- Trigger to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -88,15 +68,24 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_resume_analysis_updated_at ON resume_analysis;
 CREATE TRIGGER update_resume_analysis_updated_at BEFORE UPDATE ON resume_analysis
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Grant permissions to the application user
-GRANT ALL PRIVILEGES ON SCHEMA resume_analyzer_schema TO resumeuser;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO resumeuser;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO resumeuser;
-
--- Create sample data (optional)
--- INSERT INTO resume_analysis (file_name, resume_text, job_description, match_score, summary)
--- VALUES ('sample_resume.pdf', 'Sample resume content...', 'Sample job description...', 85.0, 'Good match');
-
+-- ---------------------------------------------------------------------------
+-- OPTIONAL: semantic search with pgvector (not used by the application yet).
+-- Requires the pgvector extension to be installed on the PostgreSQL server.
+-- Uncomment to enable.
+-- ---------------------------------------------------------------------------
+-- CREATE EXTENSION IF NOT EXISTS vector;
+--
+-- CREATE TABLE IF NOT EXISTS resume_embeddings (
+--     id BIGSERIAL PRIMARY KEY,
+--     analysis_id BIGINT NOT NULL UNIQUE,
+--     embedding vector(1536), -- OpenAI embedding dimension
+--     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+--     FOREIGN KEY (analysis_id) REFERENCES resume_analysis(id) ON DELETE CASCADE
+-- );
+--
+-- CREATE INDEX IF NOT EXISTS idx_embedding_vector ON resume_embeddings
+--     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);

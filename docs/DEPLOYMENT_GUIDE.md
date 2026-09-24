@@ -5,7 +5,7 @@
 ### Prerequisites
 
 - Docker & Docker Compose installed
-- OpenAI API Key
+- DeepSeek API Key
 - Server with at least 2GB RAM
 - 10GB free disk space
 
@@ -33,8 +33,8 @@ POSTGRES_DB=resume_analyzer_prod
 POSTGRES_USER=prod_user
 POSTGRES_PASSWORD=strong_password_here
 
-# OpenAI
-OPENAI_API_KEY=sk-...
+# DeepSeek
+DEEPSEEK_API_KEY=sk-...
 
 # Application
 SPRING_PROFILES_ACTIVE=docker
@@ -110,7 +110,7 @@ open http://localhost:5050
 kubectl create namespace resume-analyzer
 
 # Create secrets
-kubectl create secret generic openai-secret \
+kubectl create secret generic deepseek-secret \
   --from-literal=api-key=sk-... \
   -n resume-analyzer
 
@@ -173,10 +173,10 @@ spec:
           value: jdbc:postgresql://postgres:5432/resume_analyzer_prod
         - name: SPRING_DATA_REDIS_HOST
           value: redis-master
-        - name: OPENAI_API_KEY
+        - name: DEEPSEEK_API_KEY
           valueFrom:
             secretKeyRef:
-              name: openai-secret
+              name: deepseek-secret
               key: api-key
         resources:
           requests:
@@ -491,7 +491,7 @@ docker-compose exec redis redis-cli INFO memory
 ## Production Checklist
 
 - [ ] Set strong database password
-- [ ] Set OpenAI API key
+- [ ] Set DeepSeek API key
 - [ ] Configure SSL/TLS certificate
 - [ ] Set up monitoring and alerting
 - [ ] Configure automated backups

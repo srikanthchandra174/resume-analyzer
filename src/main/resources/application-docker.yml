@@ -2,10 +2,6 @@ spring:
   application:
     name: resume-analyzer
 
-  # Server Configuration
-  server:
-    port: 8080
-
   # Database Configuration for Docker
   datasource:
     url: jdbc:postgresql://postgres:5432/resume_analyzer
@@ -33,18 +29,23 @@ spring:
       port: 6379
       password:
 
-  # Cache Configuration
-  cache:
-    type: redis
-
   # Spring AI Configuration
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY:}
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
       chat:
         options:
-          model: gpt-4-turbo-preview
+          model: ${DEEPSEEK_MODEL:deepseek-chat}
           temperature: 0.7
+
+# Server Configuration
+server:
+  port: 8080
+
+# Redis is available in the Docker Compose stack
+app:
+  cache:
+    enabled: true
 
 # Logging
 logging:

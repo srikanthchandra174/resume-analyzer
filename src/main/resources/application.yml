@@ -2,20 +2,11 @@ spring:
   application:
     name: resume-analyzer
 
-  # Server Configuration
-  server:
-    port: 8080
-    servlet:
-      context-path: /
-    compression:
-      enabled: true
-      min-response-size: 1024
-
   # Database Configuration (PostgreSQL)
   datasource:
-    url: jdbc:postgresql://localhost:5432/resume_analyzer
-    username: resumeuser
-    password: resumepassword
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/resume_analyzer}
+    username: ${DB_USERNAME:resumeuser}
+    password: ${DB_PASSWORD:resumepassword}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -37,24 +28,16 @@ spring:
           fetch_size: 50
     open-in-view: false
 
-  # Redis Configuration
+  # Redis Configuration (only used when app.cache.enabled=true)
   data:
     redis:
-      host: localhost
-      port: 6379
-      password:
-      timeout: 60000ms
-      jedis:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 5000ms
 
-  # Cache Configuration
+  # Analysis results are cached manually by CacheService, not via @Cacheable
   cache:
-    type: redis
-    redis:
-      time-to-live: 86400000 # 24 hours in milliseconds
+    type: none
 
   # File Upload Configuration
   servlet:
@@ -64,23 +47,35 @@ spring:
 
   # Spring AI Configuration
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY:}
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
       chat:
         options:
-          model: gpt-4-turbo-preview
+          model: ${DEEPSEEK_MODEL:deepseek-chat}
           temperature: 0.7
           top-p: 0.9
           max-tokens: 1024
 
-  # Jackson Configuration
+  # Jackson Configuration (Boot 4 / Jackson 3 writes dates as ISO-8601 strings by default)
   jackson:
     default-property-inclusion: non_null
-    serialization:
-      write-dates-as-timestamps: false
     time-zone: UTC
 
-  # Logging Configuration
+# Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    min-response-size: 1024
+
+# Application Configuration
+app:
+  cache:
+    enabled: ${CACHE_ENABLED:false}
+
+# Logging Configuration
 logging:
   level:
     root: INFO
@@ -105,4 +100,3 @@ management:
       enabled: true
     readinessState:
       enabled: true
-

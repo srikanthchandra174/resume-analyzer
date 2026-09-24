@@ -2,7 +2,9 @@ package com.srikanth.ai.resumeanalyzer.exception;
 
 import com.srikanth.ai.resumeanalyzer.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -82,11 +84,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Handle validation errors
+     * Handle validation errors (overrides the base class handler; redeclaring
+     * an @ExceptionHandler for this type would be ambiguous)
      */
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationExceptions(
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(
         MethodArgumentNotValidException ex,
+        HttpHeaders headers,
+        HttpStatusCode status,
         WebRequest request
     ) {
         log.warn("Validation error: {}", ex.getMessage());
@@ -110,11 +115,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Handle file upload size exceeded
+     * Handle file upload size exceeded (overrides the base class handler)
      */
-    @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceededException(
+    @Override
+    protected ResponseEntity<Object> handleMaxUploadSizeExceededException(
         MaxUploadSizeExceededException ex,
+        HttpHeaders headers,
+        HttpStatusCode status,
         WebRequest request
     ) {
         log.warn("File size exceeded: {}", ex.getMessage());
