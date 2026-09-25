@@ -2,13 +2,13 @@
 
 An **AI-powered resume analysis backend** built with **Spring Boot 4** and **Java 21**. Upload a resume (PDF) and a job description, and the service uses Large Language Models via **Spring AI** (**DeepSeek**) to score the match, surface missing skills, suggest improvements, and generate interview questions — backed by **PostgreSQL** for storage and optional **Redis** caching.
 
-> A backend showcase of modern **AI-augmented Java development**: Spring AI, vector databases, and local LLM inference.
+> A backend showcase of modern **AI-augmented Java development** with Spring AI.
 
 ---
 
 ## Overview
 
-Resume Analyzer turns a resume + a target job description into structured, AI-generated insight. PDF text is extracted with Apache PDFBox, analysed by an LLM through Spring AI, embedded into a pgvector store for similarity search, and persisted in PostgreSQL. Redis caches results to avoid repeat inference.
+Resume Analyzer turns a resume + a target job description into structured, AI-generated insight. PDF text is extracted with Apache PDFBox, analysed by an LLM through Spring AI, and persisted in PostgreSQL. Redis optionally caches results to avoid repeat inference.
 
 ## Features
 
@@ -17,9 +17,8 @@ Resume Analyzer turns a resume + a target job description into structured, AI-ge
 - 🧩 **Missing-skills detection** — identifies skills present in the job description but absent from the resume.
 - 📝 **AI summary & suggested improvements** — a concise fit summary plus actionable resume improvements.
 - ❓ **Interview-question generation** — tailored questions based on the resume and role.
-- 🔎 **Semantic search (RAG-ready)** — stores **1536-dimension embeddings** in **pgvector** with an IVFFlat cosine index for similarity search; GIN full-text indexes on resume and job-description text.
 - 🔁 **Pluggable LLM backend** — DeepSeek via Spring AI; other providers can be swapped in by changing the model starter and config.
-- ⚡ **Redis caching** to reduce latency and repeat LLM calls.
+- ⚡ **Optional Redis caching** (off by default, `CACHE_ENABLED=true` to enable) to reduce latency and repeat LLM calls.
 - 🧾 **Audit logging** of match-score changes; automatic `updated_at` triggers.
 - 🐳 **Dockerised infrastructure** via Docker Compose.
 
@@ -30,19 +29,17 @@ flowchart TD
   C["Client"] -->|"POST: resume PDF + job description"| API["Spring Boot 4 REST API"]
   API -->|extract text| PDF["Apache PDFBox"]
   API -->|"analyse: score, skills, summary, questions"| AI["Spring AI — DeepSeek"]
-  AI -->|"embeddings (1536-d)"| PG[("PostgreSQL + pgvector")]
-  API -->|persist analysis & results| PG
-  API -->|cache| REDIS[("Redis")]
-  PG -->|cosine similarity search| API
+  API -->|persist analysis & results| PG[("PostgreSQL")]
+  API -->|optional cache| REDIS[("Redis")]
 ```
 
 ## Analysis Result
 
-A completed analysis stores (and returns) a structure equivalent to:
+A completed analysis returns a structure equivalent to:
 
 ```json
 {
-  "fileName": "resume.pdf",
+  "analysisId": 1,
   "matchScore": 85.0,
   "summary": "Strong backend fit; gaps in container orchestration.",
   "missingSkills": ["Kubernetes", "GraphQL"],
@@ -56,6 +53,8 @@ A completed analysis stores (and returns) a structure equivalent to:
   ]
 }
 ```
+
+> A response served from cache has no `analysisId` and nothing is written to the database.
 
 ## API Endpoints
 
@@ -77,14 +76,12 @@ curl -X POST http://localhost:8080/api/v1/resume-analysis/analyze \
 **Example Response:**
 ```json
 {
-  "id": 1,
-  "fileName": "resume.pdf",
+  "analysisId": 1,
   "matchScore": 85.0,
   "summary": "Strong backend fit; gaps in container orchestration.",
   "missingSkills": ["Kubernetes", "GraphQL"],
   "suggestedImprovements": ["Quantify impact in experience bullets", "Add a cloud/DevOps section"],
-  "interviewQuestions": ["Walk through a microservice you designed...", "How would you tune a slow PostgreSQL query?"],
-  "createdAt": "2026-03-30T10:30:00Z"
+  "interviewQuestions": ["Walk through a microservice you designed...", "How would you tune a slow PostgreSQL query?"]
 }
 ```
 
@@ -97,7 +94,6 @@ curl -X POST http://localhost:8080/api/v1/resume-analysis/analyze \
 | Language / Runtime | Java 21 |
 | Framework | Spring Boot 4.0.5 (Spring MVC, Validation, Cache) |
 | AI | Spring AI 2.0.0-M3 — DeepSeek model starter |
-| Vector store | PostgreSQL + `pgvector` (1536-d embeddings, IVFFlat cosine index) |
 | Persistence | Spring Data JPA, PostgreSQL |
 | Caching | Redis (optional) |
 | PDF parsing | Apache PDFBox 3.0.2 |
@@ -111,12 +107,12 @@ curl -X POST http://localhost:8080/api/v1/resume-analysis/analyze \
 
 | Service | Image | Port |
 |--------|-------|------|
-| PostgreSQL + pgvector | `pgvector/pgvector:pg16` | 5432 |
+| PostgreSQL | `pgvector/pgvector:pg16` | 5432 |
 | Redis | `redis:7-alpine` | 6379 |
 | Redis Commander (UI, optional) | `rediscommander/redis-commander` | 8081 |
 | pgAdmin (UI, optional) | `dpage/pgadmin4` | 5050 |
 
-The PostgreSQL container auto-runs `init-db.sql` on first start (enables the `vector` extension and creates the schema, tables, indexes, and triggers).
+The PostgreSQL container auto-runs `init-db.sql` on first start (creates the schema, tables, indexes, and triggers).
 
 ## Prerequisites
 
@@ -131,7 +127,7 @@ The PostgreSQL container auto-runs `init-db.sql` on first start (enables the `ve
 git clone https://github.com/srikanthchandra174/resume-analyzer.git
 cd resume-analyzer
 
-# 2. Start infrastructure (PostgreSQL + pgvector, Redis, optional UIs)
+# 2. Start infrastructure (PostgreSQL, Redis, optional UIs)
 docker compose up -d
 
 # 3. Run the application (Maven wrapper)
@@ -144,7 +140,7 @@ The API starts on the configured port (default `8080`). PostgreSQL initialises a
 
 Only **JDK 21**, **PostgreSQL** and a **DeepSeek API key** are needed. Redis is optional: caching is off by default.
 
-1. **Install PostgreSQL** (16 or newer). The pgvector extension is *not* required.
+1. **Install PostgreSQL** (16 or newer).
 2. **Create the database and user** (in `psql` as the `postgres` superuser):
    ```sql
    CREATE USER resumeuser WITH PASSWORD 'resumepassword';
@@ -176,9 +172,11 @@ Set via environment variables (defaults in `application.yml`):
 
 | Setting | Purpose |
 |--------|---------|
-| `SPRING_DATASOURCE_URL` / username / password | PostgreSQL connection (local defaults are defined in `docker-compose.yml`) |
-| `SPRING_DATA_REDIS_HOST` / `PORT` | Redis connection |
+| `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` | PostgreSQL connection (local defaults are defined in `docker-compose.yml`) |
+| `REDIS_HOST` / `REDIS_PORT` | Redis connection (only used when `CACHE_ENABLED=true`) |
+| `CACHE_ENABLED` | Turns Redis caching on/off (default `false`) |
 | `DEEPSEEK_API_KEY` + `DEEPSEEK_MODEL` | DeepSeek backend |
+| `SERVER_PORT` | HTTP port (default `8080`) |
 
 > ⚠️ **Never commit your DeepSeek API key.** Provide it via an environment variable or untracked local config.
 
@@ -186,11 +184,10 @@ Set via environment variables (defaults in `application.yml`):
 
 | Table | Purpose |
 |------|---------|
-| `resume_analysis` | Core record: file name, resume text, job description, `match_score` (0–100), summary, embedding reference, timestamps |
+| `resume_analysis` | Core record: file name, resume text, job description, `match_score` (0–100), summary, timestamps |
 | `missing_skills` | Skills required by the JD but missing from the resume |
 | `suggested_improvements` | AI-generated improvement suggestions |
 | `interview_questions` | Generated interview questions |
-| `resume_embeddings` | 1536-d vector embeddings (IVFFlat cosine index) for semantic search |
 | `analysis_audit_log` | Audit trail of match-score changes |
 
 ## Project Structure
@@ -199,10 +196,10 @@ Set via environment variables (defaults in `application.yml`):
 resume-analyzer/
 ├── src/
 │   ├── main/                 # Application source (controllers, services, config)
-│   └── test/                 # Unit and integration tests
+│   └── test/                 # Unit tests
 ├── docs/                     # Project documentation
-├── init-db.sql               # pgvector + schema bootstrap (auto-run by Postgres container)
-├── docker-compose.yml        # PostgreSQL (pgvector), Redis, Redis Commander, pgAdmin
+├── init-db.sql               # Schema bootstrap (auto-run by Postgres container)
+├── docker-compose.yml        # PostgreSQL, Redis, Redis Commander, pgAdmin
 ├── Dockerfile                # Application container image
 ├── pom.xml                   # Maven build & dependencies
 └── mvnw / mvnw.cmd           # Maven wrapper
@@ -210,7 +207,7 @@ resume-analyzer/
 
 ## Running Tests
 
-Run the test suite with Maven:
+Run the unit test suite with Maven (plain JUnit 5 + Mockito, no Spring context, no external services needed):
 
 ```bash
 ./mvnw test                    # Linux / macOS
@@ -222,16 +219,8 @@ mvnw.cmd test                  # Windows
 - Built on **Spring Boot 4 / Java 21** with the current Spring ecosystem.
 - **Provider-agnostic AI integration** via Spring AI — the model provider (currently DeepSeek) is isolated behind `ChatClient`.
 - Designed a **normalised analysis schema** (match score, missing skills, improvements, interview questions) with referential integrity, full-text (GIN) indexes, and an audit log.
-- Applied **vector embeddings + pgvector** (IVFFlat cosine) for semantic similarity — a practical **RAG** foundation on a relational database.
-- Used **Redis caching** to cut latency and repeated inference cost.
+- Used **optional Redis caching** to cut latency and repeated inference cost.
 - Reproducible local environment via **Docker Compose**, with DB bootstrapped from `init-db.sql`.
-
-## Roadmap
-
-- REST API documentation (OpenAPI / Swagger UI).
-- Authentication and per-user analysis history.
-- Batch analysis of multiple resumes against one job description.
-- A lightweight front-end for uploads and results.
 
 ## License
 
